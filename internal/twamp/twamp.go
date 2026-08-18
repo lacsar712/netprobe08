@@ -22,7 +22,36 @@ func Seed() []Rec {
 	}
 }
 
+// AfterWrite enforces the cross-session pad floor after a session body is
+// written. The advertised pad is remembered through setMin (persisted by the
+// caller under e.g. "rollback_min"); any later write that shrinks the pad
+// below the last advertised value is rejected. This keeps the parameter state
+// monotonic across sessions instead of letting smaller padding silently leak in.
 func AfterWrite(getMin func() (string, error), setMin func(string) error, body string) error {
+	_, pad, err := parse(body)
+	if err != nil {
+		return err
+	}
+	cur, err := getMin()
+	if err != nil {
+		return fmt.Errorf("read advertised pad: %w", err)
+	}
+	if cur != "" {
+		prev, err := strconv.Atoi(cur)
+		if err != nil {
+			return fmt.Errorf("advertised pad state %q: %w", cur, err)
+		}
+		if pad < prev {
+			return fmt.Errorf("pad %d shrinks below advertised %d", pad, prev)
+		}
+		// Equal pad: floor already correct, avoid a redundant cross-session write.
+		if pad == prev {
+			return nil
+		}
+	}
+	if err := setMin(strconv.Itoa(pad)); err != nil {
+		return fmt.Errorf("advertise pad: %w", err)
+	}
 	return nil
 }
 

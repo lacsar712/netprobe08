@@ -2,6 +2,8 @@ package svc
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -68,7 +70,16 @@ func (c *Catalog) Create(ctx context.Context, title, body string, tags []string,
 		return model.Record{}, fmt.Errorf("create: %w", errwrap.WrapDenied("policy"))
 	}
 	if err := policy.AfterWrite(
-		func() (string, error) { return c.Store.GetSetting(ctx, "rollback_min") },
+		func() (string, error) {
+			v, err := c.Store.GetSetting(ctx, "rollback_min")
+			// "rollback_min" not yet persisted == no pad advertised so far.
+			// Map that to the empty-string floor the gate expects; any other
+			// read error stays a fail-closed reject.
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", nil
+			}
+			return v, err
+		},
 		func(v string) error { return c.Store.SetSetting(ctx, "rollback_min", v) },
 		body,
 	); err != nil {
