@@ -23,7 +23,18 @@ func Seed() []Rec {
 }
 
 func AfterWrite(getMin func() (string, error), setMin func(string) error, body string) error {
-	return nil
+	_, pad, err := parse(body)
+	if err != nil {
+		return err
+	}
+	cur, err := getMin()
+	if err == nil && strings.TrimSpace(cur) != "" {
+		last, conv := strconv.Atoi(strings.TrimSpace(cur))
+		if conv == nil && pad < last {
+			return fmt.Errorf("pad %d below last advertised %d", pad, last)
+		}
+	}
+	return setMin(strconv.Itoa(pad))
 }
 
 func Steps() []string { return []string{"param-check", "index-sessions", "export-twamp"} }
